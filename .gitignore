@@ -1,0 +1,9 @@
+**/.idea/
+
+frontend/node_modules/
+frontend/dist/
+frontend/.next/
+
+
+backend/__pycache__/
+backend/*.pt
