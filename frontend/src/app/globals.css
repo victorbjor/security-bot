@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+h1 {
+  @apply text-8xl pb-16 tracking-widest;
+}
+h2 {
+  @apply text-4xl mb-5 tracking-widest;
+}
+
+:root {
+  --background: rgb(237, 237, 237);
+  --foreground: rgb(97, 97, 97);
+  --shade: rgb(23, 23, 23);
+  --accent: rgb(218, 0, 55);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: rgb(237, 237, 237);
+    --foreground: rgb(97, 97, 97);
+    --shade: rgb(23, 23, 23);
+    --accent: rgb(218, 0, 55);
+  }
+}
+
+/* body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: Arial, Helvetica, sans-serif;
+} */
