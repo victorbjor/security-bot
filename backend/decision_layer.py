@@ -1,8 +1,8 @@
 from enum import Enum
-import aiohttp
 from pydantic import BaseModel, Field
 
 import instructor
+from ollama import AsyncClient
 from openai import AsyncOpenAI
 
 
@@ -15,7 +15,12 @@ client = instructor.from_openai(
         base_url= ollama_url,
         api_key="ollama",  # required, but unused
     ),
-    mode=instructor.Mode.JSON,
+    mode=instructor.Mode.JSON, 
+)
+
+vision_client = AsyncOpenAI(
+    base_url= ollama_url,
+    api_key="ollama",  # required, but unused
 )
 
 class EscalationLevel(Enum):
@@ -32,26 +37,28 @@ class DecisionAnswer(BaseModel):
 
 
 describer_prompt = """
-You are a security guard. You're job is to receive images of people from a lower level autonomous security system.
-You are responsible for determining if the person in the image is indeed a threat.
-The lower level systems have very low intelligence. They only have access to the image and have no context or ability to reason.
-Make sure to make a detailed description of the facial expressions and possible emotions of the person in the image.
-Do not make any assumptions about the the reasoning of the lower level system. Just look at the image, describe what you see, and make sure to include all details that may, or may not, warrant escalation.
-The lower level system may often mark people as threats when they are really not.
+You are an observational analyst designed to assist with image interpretation for safety and situational awareness systems. Your task is to analyze images provided by a basic image detection system.
+Carefully describe the details of the person or people in the image, focusing on observable features such as facial expressions, body posture, and visible objects. Highlight any elements that might indicate emotions, actions, or context but avoid making assumptions beyond the visible details.
+The lower-level system may occasionally flag individuals for review, even when no concerning elements are present. Your role is not to determine intent but to provide a thorough and neutral description to inform further evaluation. Stick strictly to the visual details and avoid adding speculative interpretations.
 """
 
 decision_prompt = """
-You are a security guard. You will receive a description of an image and any threats therein from a lower level system.
-You should make a decision based on the description and the image, whether threat escalation is warranted.
+You are a safety and security assistant responsible for assessing descriptions of images provided by a lower-level observational system. Your task is to decide on the appropriate response level based on the detailed description provided.
 
-Log level escalation is for when the person does not pose an immediate threat, but is acting suspiciously.
-Call security level escalation is for when the person may be posing an immediate threat. Calling security is ok even when immediate threat is not fully confirmed, but possible.
-Alarm level escalation is for when the person is posing an immediate threat and the general alarm should be triggered.
+You are not responsible for interpreting intent beyond the description but should categorize the situation using the following guidelines:
+
+1. **Log Level Escalation:** For situations where the description indicates unusual or suspicious behavior that does not pose an immediate threat. Use this to document concerns without taking immediate action.
+
+2. **Call Security Level Escalation:** For situations where the description suggests a potential threat that might require immediate attention. It is acceptable to escalate at this level if there is uncertainty but the possibility of a threat exists.
+
+3. **Alarm Level Escalation:** For situations where the description clearly indicates an immediate and significant threat that requires triggering the general alarm.
+
+Always base your decision on the details explicitly provided in the description. Do not infer or assume additional context that is not present in the information given. If the description lacks sufficient detail, opt for a false positive and choose 'INSUFFICIENT DETAIL' as escalation reason.
 """
 
-async def call_decision_layer(base64_image: str) -> DecisionAnswer | None:
-    image_description = await get_image_description(base64_image)
-    print(image_description)
+async def call_decision_layer(image_path: str) -> DecisionAnswer | None:
+    image_description = await get_image_description(image_path)
+    print('-------------\n' + image_description + '\n-------------')
     try:
         return await client.chat.completions.create(
             model=DECISION_MODEL,
@@ -72,24 +79,13 @@ async def call_decision_layer(base64_image: str) -> DecisionAnswer | None:
         return None
 
 
-async def get_image_description(base64_image: str) -> str:
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                'http://localhost:11434/api/generate',
-                json={
-                    "model": VISION_MODEL,
-                    "prompt": describer_prompt,
-                    "stream": False,
-                    "images": [base64_image]
-                }
-            ) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    return result['response']
-                else:
-                    print(f"Error from Ollama API: {response.status}")
-                    return None
-    except Exception as e:
-        print(f"Error getting image description: {e}")
-        return None
+async def get_image_description(image_path: str) -> str:
+    response = await AsyncClient().chat(
+        model=VISION_MODEL,
+        messages=[{
+            'role': 'user',
+            'content': describer_prompt,
+            'images': [image_path] #[f"data:image/jpeg;base64,{base64_image}"]
+        }]
+    )
+    return response.message.content

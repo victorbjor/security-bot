@@ -3,6 +3,7 @@ import base64
 from collections import deque
 import json
 import time
+import tempfile
 
 import cv2
 from fastapi import FastAPI, WebSocket
@@ -37,7 +38,14 @@ async def verdicts_websocket(websocket: WebSocket):
 
             _, buffer = cv2.imencode('.jpg', suspect)
             cropped_base64 = base64.b64encode(buffer).decode("utf-8")
-            decision = await call_decision_layer(cropped_base64)
+            # Save cropped image to temp file
+            
+            # Create temp file that gets automatically deleted when closed
+            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=True) as temp_file:
+                temp_file.write(base64.b64decode(cropped_base64))
+                print(temp_file.name)
+                temp_file.flush()
+                decision = await call_decision_layer(temp_file.name)
             
             if decision is None:
                 continue

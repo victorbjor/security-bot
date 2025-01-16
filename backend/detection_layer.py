@@ -38,7 +38,7 @@ def add_fps_count(frame, prev_time):
         (10, 30),  # Position (x, y)
         cv2.FONT_HERSHEY_SIMPLEX,  # Font
         1,  # Font scale
-        (150, 150, 150),
+        (150, 255, 150),
         2,  # Thickness
         cv2.LINE_AA  # Line type
     )
