@@ -8,6 +8,11 @@ services:
       - "8000:8000"
     networks:
       - app-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: ["gpu"]
 
   frontend:
     build:
