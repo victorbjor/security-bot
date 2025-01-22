@@ -1,4 +1,4 @@
-FROM node:18-alpine
+FROM node:22-alpine
 
 # Set the working directory
 WORKDIR /app
@@ -7,16 +7,16 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm install
+RUN yarn install
 
 # Copy the rest of the application code
 COPY . .
 
 # Build the Next.js project
-RUN npm run build
+RUN yarn build
 
 # Expose the application port
 EXPOSE 3000
 
 # Command to run the Next.js app
-CMD ["npm", "run", "start"]
+CMD ["yarn", "start"]
