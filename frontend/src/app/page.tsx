@@ -1,5 +1,7 @@
 import CameraFeed from "@/components/CameraFeed";
 import RollercoasterFeed from "@/components/RollercoasterFeed";
+import ProductBoard from "@/components/ProductBoard";
+import {FeedHolder} from "@/components/FeedHolder";
 
 export default function Home() {
   return (
@@ -9,9 +11,7 @@ export default function Home() {
           <p className="text-foreground text-center text-8xl">Security Bot</p>
           <CameraFeed />
         </div>
-        <div className="flex flex-col w-1/3 items-center">
-          <RollercoasterFeed />
-        </div>
+        <FeedHolder />
       </div>
     </div>
   );
