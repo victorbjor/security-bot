@@ -7,3 +7,7 @@ frontend/.next/
 
 backend/__pycache__/
 backend/*.pt
+/backend/.env
+.DS_Store
+backend/nice_leaderboard.pkl
+backend/threat_leaderboard.pkl

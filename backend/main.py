@@ -1,31 +1,37 @@
 import asyncio
-import base64
 from collections import deque
 import json
-import time
-import tempfile
 
-import cv2
-from fastapi import FastAPI, WebSocket
-from fastapi.responses import StreamingResponse
-import numpy as np
+from fastapi import FastAPI, Response, WebSocket, Request, HTTPException
+from pydantic import BaseModel
+from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 
-from constants import Z_CUTOFF
+from leaderboard_manager import LeaderboardManager
+from common import Detection, Leaderboard, annotation_queue
+from detection_layer import generate_frames
 from decision_layer import call_decision_layer
-from detection_layer import add_fps_count, assess_people, detect_people, draw_z_scores
 
 app = FastAPI()
 
-annotation_queue = deque(maxlen=10)
 
-def sift_people(people: list[np.ndarray], z_scores: list[float]):
-    for i, z in enumerate(z_scores):
-        if z > Z_CUTOFF:
-            annotation_queue.append(people[i])
+class UpdateNameRequest(BaseModel):
+    name: str
+    id: str
 
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Or ["*"] to allow all origins (for dev only)
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all HTTP methods
+    allow_headers=["*"],  # Allow all headers
+)
+
+leaderboard_manager: LeaderboardManager = LeaderboardManager()
 
 @app.websocket("/ws/verdicts")
-async def verdicts_websocket(websocket: WebSocket):
+async def verdicts_websocket(websocket: WebSocket) -> None:
     await websocket.accept()
 
     try:
@@ -34,24 +40,16 @@ async def verdicts_websocket(websocket: WebSocket):
                 await asyncio.sleep(0.1)
                 continue
 
-            suspect = annotation_queue.popleft()
+            suspect: Detection = annotation_queue.pop(0)
 
-            _, buffer = cv2.imencode('.jpg', suspect)
-            cropped_base64 = base64.b64encode(buffer).decode("utf-8")
-            # Save cropped image to temp file
+            decision = await call_decision_layer(suspect.image)
             
-            # Create temp file that gets automatically deleted when closed
-            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=True) as temp_file:
-                temp_file.write(base64.b64decode(cropped_base64))
-                print(temp_file.name)
-                temp_file.flush()
-                decision = await call_decision_layer(temp_file.name)
-            
+            # Handle errors "gracefully"
             if decision is None:
                 continue
 
             message = {
-                "image": f"data:image/jpeg;base64,{cropped_base64}",
+                "image": f"data:image/jpeg;base64,{suspect.image}",
                 "decision": decision.model_dump_json()
             }
             await websocket.send_text(json.dumps(message))
@@ -63,37 +61,27 @@ async def verdicts_websocket(websocket: WebSocket):
 
 
 @app.get("/video_feed")
-async def video_feed():
+async def video_feed() -> StreamingResponse:
     # Generate an MJPEG stream
-    return StreamingResponse(generate_frames(), media_type="multipart/x-mixed-replace; boundary=frame")
+    return StreamingResponse(generate_frames(leaderboard_manager), media_type="multipart/x-mixed-replace; boundary=frame")
 
-def generate_frames():
-    camera = cv2.VideoCapture(0)
-    if not camera.isOpened():
-        raise RuntimeError("Could not open webcam.")
 
-    prev_time = time.time()
+@app.get("/leaderboard", response_model=Leaderboard)
+async def leaderboard() -> Leaderboard:
+    return Leaderboard(
+        nice=leaderboard_manager.nice_leaderboard,
+        threat=leaderboard_manager.threat_leaderboard
+    )
 
-    while True:
-        success, frame = camera.read()
-        if not success:
-            break
 
-        prev_time = add_fps_count(frame, prev_time)
-        people, results = detect_people(frame, classes=[0])
-        z_scores = assess_people(people)
-        draw_z_scores(frame, results, z_scores)
-        sift_people(people, z_scores)
-
-        _, buffer = cv2.imencode('.jpg', frame)
-        frame_bytes = buffer.tobytes()
-
-        # Yield as part of the MJPEG stream
-        yield (b"--frame\r\n"
-               b"Content-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n")
-
-    camera.release()
+@app.post("/update-name")
+async def update_name(request: UpdateNameRequest) -> Response:
+    # Assuming leaderboard_manager.update_name(id, name) updates the product name successfully.
+    success = leaderboard_manager.update_name(request.id, request.name)
+    if not success:
+        raise HTTPException(status_code=400, detail="Failed to update product name.")
+    return Response(status_code=200)
 
 if __name__ == "__main__":
-    for e in generate_frames():
+    for e in generate_frames(leaderboard_manager):
         pass
